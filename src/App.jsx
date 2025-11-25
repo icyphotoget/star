@@ -10,7 +10,6 @@ import AuthModal from "./components/AuthModal.jsx";
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./lib/auth.jsx";
 import ClaimProgress from "./components/ClaimProgress.jsx";
-import TodayClaimsCounter from "./components/TodayClaimsCounter.jsx";
 
 const recentStars = [
   {
@@ -155,7 +154,7 @@ function Planet({
             emissive="#4b5563"
             transparent
             opacity={0.75}
-            side={2}
+            side={THREE.DoubleSide}
           />
         </mesh>
       )}
@@ -259,8 +258,13 @@ const CameraRig = ({ selectedStar, controlsRef }) => {
       fromTargetRef.current.copy(defaultTarget.current);
     }
 
-    const outDir = fromPosRef.current.clone().sub(finalPosRef.current).normalize();
-    midPosRef.current.copy(fromPosRef.current).add(outDir.multiplyScalar(6));
+    const outDir = fromPosRef.current
+      .clone()
+      .sub(finalPosRef.current)
+      .normalize();
+    midPosRef.current
+      .copy(fromPosRef.current)
+      .add(outDir.multiplyScalar(6));
 
     modeRef.current = "out";
     timerRef.current = 0;
@@ -315,7 +319,6 @@ const CameraRig = ({ selectedStar, controlsRef }) => {
       return;
     }
 
-    // idle: ako nema selectedStar → ne diramo kameru, full free roam
     if (!selectedStar) return;
   });
 
@@ -331,6 +334,8 @@ const App = () => {
   const [authOpen, setAuthOpen] = useState(false);
 
   const [selectedStar, setSelectedStar] = useState(null);
+  const [hoveredStar, setHoveredStar] = useState(null);
+
   const [form, setForm] = useState({
     name: "",
     message: "",
@@ -345,6 +350,13 @@ const App = () => {
   const [textSearchError, setTextSearchError] = useState("");
 
   const [isUniverseFullscreen, setIsUniverseFullscreen] = useState(false);
+
+  // claim success state
+  const [claimStep, setClaimStep] = useState("form"); // "form" | "success"
+  const [recentlyClaimedStar, setRecentlyClaimedStar] = useState(null);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  const [allStars, setAllStars] = useState([]); // sve učitane zvijezde iz StarFielda
 
   const controlsRef = useRef(null);
 
@@ -366,21 +378,47 @@ const App = () => {
 
   const handleOpenClaimModal = (e) => {
     if (e) e.preventDefault();
-    setSelectedStar(null);
     setIsClaimModalOpen(true);
+    setClaimStep("form");
+    setShareCopied(false);
   };
 
   const handleStarClick = (star) => {
     console.log("Clicked star:", star);
+    setSelectedStar(star);
+    setIsClaimModalOpen(false);
+  };
 
-    if (star.is_claimed) {
-      setSelectedStar(star);
-      setIsClaimModalOpen(false);
+  const handleStarHover = (star) => {
+    setHoveredStar(star);
+  };
+
+  const handleStarsLoaded = (stars) => {
+    setAllStars(stars || []);
+  };
+
+  const handlePickRandomFreeStar = () => {
+    if (!allStars || allStars.length === 0) {
+      alert("The universe is still loading. Try again in a moment.");
       return;
     }
 
-    setSelectedStar(star);
+    const freeStars = allStars.filter((s) => !s.is_claimed);
+    if (freeStars.length === 0) {
+      alert("All stars have been claimed.");
+      return;
+    }
+
+    const randomIndex = Math.floor(Math.random() * freeStars.length);
+    const randomStar = freeStars[randomIndex];
+
+    setSelectedStar(randomStar);
     setIsClaimModalOpen(true);
+    setClaimStep("form");
+    setShareCopied(false);
+
+    const el = document.getElementById("universe");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   const handleJumpToStar = (star) => {
@@ -397,6 +435,9 @@ const App = () => {
       message: "",
       color: "cyan",
     });
+    setClaimStep("form");
+    setShareCopied(false);
+    setRecentlyClaimedStar(null);
   };
 
   const handleInputChange = (e) => {
@@ -448,10 +489,34 @@ const App = () => {
       return;
     }
 
-    alert(`Star #${selectedStar.id} successfully claimed!`);
-
     setReloadKey((k) => k + 1);
-    handleCloseClaimModal();
+    setRecentlyClaimedStar(selectedStar);
+    setClaimStep("success");
+  };
+
+  const handleViewClaimedInUniverse = () => {
+    const star = recentlyClaimedStar || selectedStar;
+    if (!star) return;
+    setSelectedStar(star);
+    setIsClaimModalOpen(false);
+    const el = document.getElementById("universe");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const handleCopyShareLink = () => {
+    const star = recentlyClaimedStar || selectedStar;
+    if (!star) return;
+
+    const url = `${window.location.origin}/star/${star.id}`;
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(url)
+        .then(() => setShareCopied(true))
+        .catch(() => setShareCopied(false));
+    } else {
+      window.prompt("Copy this link:", url);
+    }
   };
 
   const handleSearchSubmit = async (e) => {
@@ -530,6 +595,8 @@ const App = () => {
     await supabase.auth.signOut();
   };
 
+  const sidebarStar = hoveredStar || selectedStar;
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       {/* NAVBAR */}
@@ -597,29 +664,36 @@ const App = () => {
           <div className="flex-1 space-y-5">
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1 text-xs text-slate-300">
               <span className="text-base">✨</span>
-              New kind of digital universe
+              1,000,000 digital stars · $1 each
             </div>
 
             <h1 className="text-4xl md:text-5xl font-semibold">
-              Own your{" "}
+              Buy a{" "}
               <span className="bg-gradient-to-r from-indigo-400 via-sky-400 to-fuchsia-400 bg-clip-text text-transparent">
-                personal star
+                single star
               </span>{" "}
-              for $1
+              in our universe for $1
             </h1>
 
             <p className="max-w-xl text-slate-300 text-sm md:text-base">
-              Pick a star in our digital galaxy, choose its glow color and
-              attach a message visible on hover. A tiny piece of the universe,
-              with your words on it—forever.
+              We&apos;re selling exactly 1,000,000 digital stars. Each costs
+              $1, comes with your message, and is forever visible in this
+              universe once claimed.
             </p>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 onClick={handleOpenClaimModal}
                 className="rounded-full bg-indigo-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-400"
               >
-                Buy a star
+                Buy a star for $1
+              </button>
+              <button
+                type="button"
+                onClick={handlePickRandomFreeStar}
+                className="rounded-full border border-slate-700 bg-slate-900/70 px-4 py-2 text-xs md:text-sm text-slate-100 hover:border-indigo-400 hover:text-white"
+              >
+                Pick a random free star
               </button>
               <a
                 href="#universe"
@@ -628,19 +702,38 @@ const App = () => {
                 View the universe
               </a>
             </div>
-
-            {/* Global progress bar (ukupno claimed) */}
-            <ClaimProgress />
           </div>
 
-          {/* RIGHT – Today’s claims counter */}
+          {/* RIGHT – Universe progress + vizualni progress bar */}
           <div className="flex-1">
-            <TodayClaimsCounter />
+            <div className="p-4 rounded-2xl border border-slate-800 bg-slate-950 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium text-slate-300">
+                  Universe progress
+                </h3>
+                <span className="text-[11px] text-slate-400">
+                  Goal: 1,000,000 stars sold
+                </span>
+              </div>
+
+              <ClaimProgress />
+
+              <div className="h-1.5 rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
+                <div className="h-full w-full bg-gradient-to-r from-indigo-500 via-sky-400 to-fuchsia-400 opacity-70 animate-pulse" />
+              </div>
+
+              <p className="text-[11px] text-slate-500">
+                Every claimed star permanently lights up this digital galaxy.
+              </p>
+            </div>
           </div>
         </section>
 
         {/* UNIVERSE SECTION */}
-        <section id="universe" className="mt-16 grid gap-8 md:grid-cols-[2fr_1fr]">
+        <section
+          id="universe"
+          className="mt-16 grid gap-8 md:grid-cols-[2fr_1fr]"
+        >
           {/* LEFT – 3D UNIVERSE */}
           <div className="rounded-3xl border border-slate-800 bg-slate-950 p-4">
             <div className="mb-3 text-xs text-slate-400 flex justify-between items-center">
@@ -675,13 +768,17 @@ const App = () => {
                   speed={0.4}
                 />
 
-                {/* Sunčev sustav + milijun zvijezda */}
                 <SolarSystem />
-                <StarField onStarClick={handleStarClick} reloadKey={reloadKey} />
+                <StarField
+                  onStarClick={handleStarClick}
+                  onStarHover={handleStarHover}
+                  onStarsLoaded={handleStarsLoaded}
+                  reloadKey={reloadKey}
+                />
 
                 <OrbitControls
                   ref={controlsRef}
-                  enablePan={true} // free roam (mouse + touch)
+                  enablePan={true}
                   enableDamping
                   dampingFactor={0.08}
                   minDistance={10}
@@ -694,24 +791,82 @@ const App = () => {
               </Canvas>
 
               <div className="absolute top-3 left-3 text-[11px] bg-black/60 px-3 py-1 rounded-full">
-                Drag to rotate · Scroll / pinch to zoom · Right-click / two-finger
-                drag to pan · Tap a star to zoom
+                Drag to rotate · Scroll / pinch to zoom · Right-click /
+                two-finger drag to pan · Tap a star to select
               </div>
+
+              {hoveredStar && hoveredStar.is_claimed && (
+                <div className="absolute bottom-3 left-3 max-w-xs rounded-2xl border border-slate-700 bg-black/70 px-3 py-2 text-[11px] text-slate-100 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs">
+                      Star #{hoveredStar.id}
+                    </span>
+                    <span className="text-[10px] text-emerald-400">
+                      Claimed
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 line-clamp-3">
+                    “{hoveredStar.message || "No message"}”
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    by {hoveredStar.owner_name || "Anonymous"}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
           {/* RIGHT – SIDEBAR */}
           <aside className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5 space-y-5">
+            {sidebarStar ? (
+              <div className="rounded-2xl border border-slate-800 bg-slate-950 px-3 py-3 text-xs space-y-1">
+                <p className="font-mono text-slate-200">
+                  Star #{sidebarStar.id}
+                </p>
+                {sidebarStar.is_claimed ? (
+                  <>
+                    <p className="text-[11px] text-slate-400">
+                      Claimed by{" "}
+                      <span className="text-slate-200">
+                        {sidebarStar.owner_name || "Anonymous"}
+                      </span>
+                    </p>
+                    {sidebarStar.message && (
+                      <p className="text-[11px] text-slate-300 line-clamp-3">
+                        “{sidebarStar.message}”
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[11px] text-emerald-400 font-medium">
+                      Not claimed yet
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleOpenClaimModal}
+                      className="mt-1 rounded-full bg-indigo-500 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-indigo-400"
+                    >
+                      Claim this star for $1
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-slate-800 bg-slate-950 px-3 py-3 text-xs text-slate-400">
+                Hover a star to preview it. Click a free star to select it, then
+                claim it for $1.
+              </div>
+            )}
+
             <h2 className="text-lg font-semibold">Explore the galaxy</h2>
             <ul className="text-sm text-slate-300 space-y-2">
               <li>✦ Zoom and rotate the 3D starfield.</li>
-              <li>✦ Pan around to freely roam the universe.</li>
-              <li>✦ Hover to read people&apos;s messages.</li>
-              <li>✦ Click a free star to claim it.</li>
-              <li>✦ Click a claimed star to zoom to it.</li>
+              <li>✦ Hover to preview people&apos;s messages.</li>
+              <li>✦ Click a free star to select it.</li>
+              <li>✦ Use “Claim this star” to make it yours for $1.</li>
             </ul>
 
-            {/* Search by ID */}
             <div className="mt-2 space-y-2">
               <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">
                 Jump to a star by ID
@@ -740,7 +895,6 @@ const App = () => {
               )}
             </div>
 
-            {/* Search by text */}
             <div className="mt-2 space-y-2">
               <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">
                 Search by name or message
@@ -776,13 +930,13 @@ const App = () => {
 
           <div className="grid md:grid-cols-3 gap-6 mt-8">
             <div className="p-5 rounded-2xl border border-slate-800 bg-slate-950">
-              Pick a free star.
+              Pick a free star in the universe.
             </div>
             <div className="p-5 rounded-2xl border border-slate-800 bg-slate-950">
-              Customize its glow & message.
+              Add your name, message and color.
             </div>
             <div className="p-5 rounded-2xl border border-slate-800 bg-slate-950">
-              Buy it for $1.
+              Pay $1. It&apos;s yours, forever.
             </div>
           </div>
         </section>
@@ -809,33 +963,22 @@ const App = () => {
         <section id="pricing" className="mt-16">
           <h2 className="text-3xl font-semibold text-center">Pricing</h2>
 
-          <div className="grid md:grid-cols-3 gap-6 mt-10">
-            <div className="p-6 border border-slate-800 rounded-2xl bg-slate-950">
-              <h3 className="text-lg">Single Star – $1</h3>
+          <div className="mt-10 max-w-md mx-auto">
+            <div className="p-6 border border-indigo-500 rounded-2xl bg-slate-950 text-center space-y-3">
+              <h3 className="text-lg font-semibold">Single Star – $1</h3>
+              <p className="text-sm text-slate-400">
+                One unique star in this universe, with your name and message on
+                it. No bundles, no tiers, just 1 star = $1.
+              </p>
               <button
                 onClick={handleOpenClaimModal}
-                className="mt-4 w-full bg-indigo-500 px-4 py-2 rounded-full"
+                className="mt-2 w-full bg-indigo-500 px-4 py-2 rounded-full text-sm font-medium text-white hover:bg-indigo-400"
               >
-                Buy
+                Buy a star for $1
               </button>
-            </div>
-            <div className="p-6 border border-indigo-500 rounded-2xl bg-slate-950">
-              <h3 className="text-lg">5-Star Bundle – $4</h3>
-              <button
-                onClick={handleOpenClaimModal}
-                className="mt-4 w-full bg-indigo-500 px-4 py-2 rounded-full"
-              >
-                Buy Bundle
-              </button>
-            </div>
-            <div className="p-6 border border-slate-800 rounded-2xl bg-slate-950">
-              <h3 className="text-lg">Sponsor – $100</h3>
-              <button
-                onClick={handleOpenClaimModal}
-                className="mt-4 w-full bg-slate-800 px-4 py-2 rounded-full"
-              >
-                Become Sponsor
-              </button>
+              <p className="text-[11px] text-slate-500">
+                Once all 1,000,000 stars are claimed, no new ones are created.
+              </p>
             </div>
           </div>
         </section>
@@ -849,19 +992,33 @@ const App = () => {
               What am I buying?
             </summary>
             <p className="text-slate-300 text-sm mt-2">
-              A digital star, not a real one.
+              You&apos;re buying a digital star in this universe: a unique
+              position plus your chosen message and color. It&apos;s not an
+              official astronomical registration.
             </p>
           </details>
 
           <details className="mt-4 p-4 border border-slate-800 rounded-lg bg-slate-950">
             <summary className="cursor-pointer text-white text-sm">
-              Can I edit the message?
+              How many stars exist?
             </summary>
-            <p className="text-slate-300 text-sm mt-2">Soon.</p>
+            <p className="text-slate-300 text-sm mt-2">
+              Exactly 1,000,000 stars. Once they&apos;re all claimed, no new
+              stars are added.
+            </p>
+          </details>
+
+          <details className="mt-4 p-4 border border-slate-800 rounded-lg bg-slate-950">
+            <summary className="cursor-pointer text-white text-sm">
+              Can I edit the message later?
+            </summary>
+            <p className="text-slate-300 text-sm mt-2">
+              Not yet, but we may add editing in the future. For now, choose
+              your words carefully.
+            </p>
           </details>
         </section>
 
-        {/* MY STARS */}
         <MyStars onJumpToStar={handleJumpToStar} />
       </main>
 
@@ -869,58 +1026,136 @@ const App = () => {
       {isClaimModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-md bg-slate-950 border border-slate-800 rounded-2xl p-6">
-            <h2 className="text-lg font-semibold mb-2">Claim your star</h2>
+            {claimStep === "form" ? (
+              <>
+                <h2 className="text-lg font-semibold mb-2">
+                  Claim your star for $1
+                </h2>
 
-            {selectedStar && (
-              <p className="mb-3 text-xs text-slate-400">
-                You&apos;re claiming star with ID:{" "}
-                <span className="text-slate-100 font-mono">{selectedStar.id}</span>
-              </p>
-            )}
+                {selectedStar ? (
+                  <p className="mb-3 text-xs text-slate-400">
+                    You&apos;re claiming star with ID:{" "}
+                    <span className="text-slate-100 font-mono">
+                      #{selectedStar.id}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="mb-3 text-xs text-amber-400">
+                    First pick a free star in the universe, or use “Pick a
+                    random free star”.
+                  </p>
+                )}
 
-            <form onSubmit={handleClaimSubmit} className="space-y-4 text-sm">
-              <div>
-                <label>Your name</label>
-                <input
-                  name="name"
-                  value={form.name}
-                  onChange={handleInputChange}
-                  className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
-                />
-              </div>
+                <form
+                  onSubmit={handleClaimSubmit}
+                  className="space-y-4 text-sm"
+                >
+                  <div>
+                    <label>Your name</label>
+                    <input
+                      name="name"
+                      value={form.name}
+                      onChange={handleInputChange}
+                      className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
+                    />
+                  </div>
 
-              <div>
-                <label>Message</label>
-                <textarea
-                  name="message"
-                  value={form.message}
-                  onChange={handleInputChange}
-                  className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2"
-                />
-              </div>
+                  <div>
+                    <label>Message</label>
+                    <textarea
+                      name="message"
+                      value={form.message}
+                      onChange={handleInputChange}
+                      maxLength={200}
+                      className="mt-1 w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {form.message.length}/200 characters
+                    </p>
+                  </div>
 
-              <div>
-                <label>Star color</label>
-                <div className="mt-2 flex gap-2 flex-wrap">
-                  {["cyan", "indigo", "fuchsia", "amber", "emerald"].map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => handleColorSelect(c)}
-                      className={`px-3 py-1.5 rounded-full text-xs border ${
-                        form.color === c ? "border-indigo-500" : "border-slate-700"
-                      }`}
-                    >
-                      {c}
-                    </button>
-                  ))}
+                  <div>
+                    <label>Star color</label>
+                    <div className="mt-2 flex gap-2 flex-wrap">
+                      {["cyan", "indigo", "fuchsia", "amber", "emerald"].map(
+                        (c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => handleColorSelect(c)}
+                            className={`px-3 py-1.5 rounded-full text-xs border inline-flex items-center gap-1 ${
+                              form.color === c
+                                ? "border-indigo-500"
+                                : "border-slate-700"
+                            }`}
+                          >
+                            <span
+                              className="h-2 w-2 rounded-full"
+                              style={{
+                                backgroundColor:
+                                  c === "cyan"
+                                    ? "#22d3ee"
+                                    : c === "indigo"
+                                    ? "#6366f1"
+                                    : c === "fuchsia"
+                                    ? "#e879f9"
+                                    : c === "amber"
+                                    ? "#fbbf24"
+                                    : "#34d399",
+                              }}
+                            />
+                            {c}
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  <button className="w-full bg-indigo-500 py-2 rounded-full">
+                    Pay $1 & claim star
+                  </button>
+                </form>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-semibold mb-2">
+                  Star claimed successfully ✨
+                </h2>
+                {recentlyClaimedStar && (
+                  <p className="mb-3 text-xs text-slate-400">
+                    Star{" "}
+                    <span className="font-mono text-slate-100">
+                      #{recentlyClaimedStar.id}
+                    </span>{" "}
+                    is now yours in this universe.
+                  </p>
+                )}
+
+                <div className="space-y-3 text-sm">
+                  <button
+                    type="button"
+                    onClick={handleViewClaimedInUniverse}
+                    className="w-full rounded-full bg-indigo-500 py-2 text-sm font-medium text-white hover:bg-indigo-400"
+                  >
+                    View in universe
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyShareLink}
+                    className="w-full rounded-full bg-slate-900 border border-slate-700 py-2 text-sm text-slate-100 hover:border-indigo-500"
+                  >
+                    Copy share link
+                  </button>
+
+                  {shareCopied && (
+                    <p className="text-[11px] text-emerald-400">
+                      Link copied to clipboard.
+                    </p>
+                  )}
                 </div>
-              </div>
-
-              <button className="w-full bg-indigo-500 py-2 rounded-full">
-                Claim star
-              </button>
-            </form>
+              </>
+            )}
 
             <button
               onClick={handleCloseClaimModal}
@@ -932,10 +1167,8 @@ const App = () => {
         </div>
       )}
 
-      {/* GOOGLE AUTH MODAL */}
       {authOpen && !user && <AuthModal onClose={() => setAuthOpen(false)} />}
 
-      {/* FULLSCREEN UNIVERSE OVERLAY */}
       {isUniverseFullscreen && (
         <div className="fixed inset-0 z-40 bg-black">
           <div className="absolute inset-0">
@@ -952,7 +1185,12 @@ const App = () => {
               />
 
               <SolarSystem />
-              <StarField onStarClick={handleStarClick} reloadKey={reloadKey} />
+              <StarField
+                onStarClick={handleStarClick}
+                onStarHover={handleStarHover}
+                onStarsLoaded={handleStarsLoaded}
+                reloadKey={reloadKey}
+              />
               <OrbitControls
                 ref={controlsRef}
                 enablePan={true}
@@ -968,10 +1206,27 @@ const App = () => {
             </Canvas>
           </div>
 
+          {hoveredStar && hoveredStar.is_claimed && (
+            <div className="absolute bottom-4 left-4 max-w-xs rounded-2xl border border-slate-700 bg-black/70 px-3 py-2 text-[11px] text-slate-100 space-y-1 z-50">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-xs">
+                  Star #{hoveredStar.id}
+                </span>
+                <span className="text-[10px] text-emerald-400">Claimed</span>
+              </div>
+              <p className="text-[11px] text-slate-300 line-clamp-3">
+                “{hoveredStar.message || "No message"}”
+              </p>
+              <p className="text-[10px] text-slate-400">
+                by {hoveredStar.owner_name || "Anonymous"}
+              </p>
+            </div>
+          )}
+
           <div className="absolute top-3 left-4 z-50 flex items-center gap-2 text-[11px] text-slate-300 bg-black/60 px-3 py-1 rounded-full">
             <span>
               Fullscreen universe · Drag to rotate · Scroll / pinch to zoom ·
-              Right-click / two-finger drag to pan · Tap a star to zoom
+              Right-click / two-finger drag to pan · Tap a star to select
             </span>
           </div>
 
