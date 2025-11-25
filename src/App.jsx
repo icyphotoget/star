@@ -1,7 +1,7 @@
 // src/App.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, Stars } from "@react-three/drei";
+import { OrbitControls, Stars, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 
 import StarField from "./components/StarField.jsx";
@@ -9,20 +9,217 @@ import MyStars from "./components/MyStars.jsx";
 import AuthModal from "./components/AuthModal.jsx";
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./lib/auth.jsx";
+import ClaimProgress from "./components/ClaimProgress.jsx";
+import TodayClaimsCounter from "./components/TodayClaimsCounter.jsx";
 
 const recentStars = [
-  { id: 1, name: "Marko K.", message: "For my mom, my real hero", time: "2 min ago" },
+  {
+    id: 1,
+    name: "Marko K.",
+    message: "For my mom, my real hero",
+    time: "2 min ago",
+  },
   { id: 2, name: "Ana S.", message: "For us two, always", time: "5 min ago" },
-  { id: 3, name: "Galactic Anonymous", message: "I did it, mom!", time: "10 min ago" },
+  {
+    id: 3,
+    name: "Galactic Anonymous",
+    message: "I did it, mom!",
+    time: "10 min ago",
+  },
 ];
 
 const SCALE = 0.6;
 
-// 🎥 CameraRig – warp: zoom-out -> warp -> zoom-in na odabranu zvijezdu
+/* 🌞 REALISTIČNI SUNČEV SUSTAV ------------------------------------ */
+
+const PLANETS = [
+  {
+    name: "Mercury",
+    distance: 7,
+    size: 0.4,
+    color: "#b1b1b1",
+    orbitSpeed: 0.18,
+    rotationSpeed: 0.35,
+  },
+  {
+    name: "Venus",
+    distance: 9,
+    size: 0.7,
+    color: "#d9b26f",
+    orbitSpeed: 0.14,
+    rotationSpeed: 0.3,
+  },
+  {
+    name: "Earth",
+    distance: 11,
+    size: 0.75,
+    color: "#4f9df7",
+    orbitSpeed: 0.11,
+    rotationSpeed: 0.4,
+  },
+  {
+    name: "Mars",
+    distance: 13,
+    size: 0.6,
+    color: "#d26b47",
+    orbitSpeed: 0.09,
+    rotationSpeed: 0.35,
+  },
+  {
+    name: "Jupiter",
+    distance: 17,
+    size: 1.8,
+    color: "#e0c29c",
+    orbitSpeed: 0.05,
+    rotationSpeed: 0.45,
+  },
+  {
+    name: "Saturn",
+    distance: 21,
+    size: 1.5,
+    color: "#e6d7a8",
+    orbitSpeed: 0.042,
+    rotationSpeed: 0.4,
+    hasRings: true,
+  },
+  {
+    name: "Uranus",
+    distance: 25,
+    size: 1.1,
+    color: "#9bd7ff",
+    orbitSpeed: 0.035,
+    rotationSpeed: 0.4,
+  },
+  {
+    name: "Neptune",
+    distance: 29,
+    size: 1.1,
+    color: "#4976ff",
+    orbitSpeed: 0.03,
+    rotationSpeed: 0.4,
+  },
+];
+
+function Planet({
+  distance,
+  size,
+  color,
+  orbitSpeed,
+  rotationSpeed,
+  hasRings,
+  texture,
+}) {
+  const orbitRef = useRef();
+  const planetRef = useRef();
+
+  useFrame((_, delta) => {
+    if (orbitRef.current) {
+      orbitRef.current.rotation.y += orbitSpeed * delta;
+    }
+    if (planetRef.current) {
+      planetRef.current.rotation.y += rotationSpeed * delta;
+    }
+  });
+
+  return (
+    <group ref={orbitRef}>
+      {/* CORE */}
+      <mesh
+        ref={planetRef}
+        position={[distance, 0, 0]}
+        castShadow
+        receiveShadow
+      >
+        <sphereGeometry args={[size, 32, 32]} />
+        <meshStandardMaterial
+          map={texture || null}
+          color={color}
+          emissive="#020617"
+          roughness={0.7}
+          metalness={0.1}
+        />
+      </mesh>
+
+      {/* TINY GLOW / AURA */}
+      <mesh position={[distance, 0, 0]}>
+        <sphereGeometry args={[size * 1.4, 32, 32]} />
+        <meshBasicMaterial color={color} transparent opacity={0.16} />
+      </mesh>
+
+      {/* SATURN RINGS */}
+      {hasRings && (
+        <mesh position={[distance, 0, 0]} rotation={[Math.PI / 2.5, 0, 0]}>
+          <ringGeometry args={[size * 1.4, size * 2.2, 64]} />
+          <meshStandardMaterial
+            color="#f5e6c8"
+            emissive="#4b5563"
+            transparent
+            opacity={0.75}
+            side={2}
+          />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+const SolarSystem = () => {
+  const planetTextures = useTexture({
+    Mercury: "/textures/mercury.jpg",
+    Venus: "/textures/venus.jpg",
+    Earth: "/textures/earth.jpg",
+    Mars: "/textures/mars.jpg",
+    Jupiter: "/textures/jupiter.jpg",
+    Saturn: "/textures/saturn.jpg",
+    Uranus: "/textures/uranus.jpg",
+    Neptune: "/textures/neptune.jpg",
+  });
+
+  const sunRef = useRef();
+
+  useFrame((_, delta) => {
+    if (sunRef.current) {
+      sunRef.current.rotation.y += 0.15 * delta;
+    }
+  });
+
+  return (
+    <>
+      {/* SUNCE */}
+      <mesh ref={sunRef} position={[0, 0, 0]} castShadow receiveShadow>
+        <sphereGeometry args={[3, 48, 48]} />
+        <meshStandardMaterial
+          emissive="#facc15"
+          emissiveIntensity={1.8}
+          color="#fde68a"
+        />
+      </mesh>
+
+      {/* GLAVNO SVJETLO */}
+      <pointLight
+        position={[0, 0, 0]}
+        intensity={3.5}
+        distance={220}
+        color="#facc15"
+        castShadow
+      />
+
+      {/* AMBIJENT */}
+      <ambientLight intensity={0.25} />
+
+      {/* PLANETI */}
+      {PLANETS.map((p) => (
+        <Planet key={p.name} {...p} texture={planetTextures[p.name]} />
+      ))}
+    </>
+  );
+};
+
+/* 🎥 CAMERA RIG – warp na odabranu zvijezdu ------------------------ */
+
 const CameraRig = ({ selectedStar, controlsRef }) => {
   const { camera } = useThree();
 
-  const defaultPos = useRef(new THREE.Vector3(0, 0, 12));
   const defaultTarget = useRef(new THREE.Vector3(0, 0, 0));
 
   const modeRef = useRef("idle"); // "idle" | "out" | "in"
@@ -35,19 +232,14 @@ const CameraRig = ({ selectedStar, controlsRef }) => {
   const tmpTargetRef = useRef(new THREE.Vector3());
   const lastStarIdRef = useRef(null);
 
-  // kad se promijeni selectedStar -> iniciraj warp
-  React.useEffect(() => {
+  useEffect(() => {
     if (!selectedStar) {
       modeRef.current = "idle";
       lastStarIdRef.current = null;
       return;
     }
 
-    if (lastStarIdRef.current === selectedStar.id) {
-      // već smo na toj zvijezdi
-      return;
-    }
-
+    if (lastStarIdRef.current === selectedStar.id) return;
     lastStarIdRef.current = selectedStar.id;
 
     const starPos = new THREE.Vector3(
@@ -61,19 +253,13 @@ const CameraRig = ({ selectedStar, controlsRef }) => {
     finalPosRef.current.copy(starPos).add(dir.clone().multiplyScalar(4));
 
     fromPosRef.current.copy(camera.position);
-
     if (controlsRef.current) {
       fromTargetRef.current.copy(controlsRef.current.target);
     } else {
       fromTargetRef.current.copy(defaultTarget.current);
     }
 
-    // warp “out” točka – malo dalje od trenutne pozicije, u smjeru suprotnom od cilja
-    const outDir = fromPosRef.current
-      .clone()
-      .sub(finalPosRef.current)
-      .normalize();
-
+    const outDir = fromPosRef.current.clone().sub(finalPosRef.current).normalize();
     midPosRef.current.copy(fromPosRef.current).add(outDir.multiplyScalar(6));
 
     modeRef.current = "out";
@@ -89,14 +275,12 @@ const CameraRig = ({ selectedStar, controlsRef }) => {
       const t = Math.min(1, timerRef.current / outDuration);
 
       camera.position.lerpVectors(fromPosRef.current, midPosRef.current, t);
-
       tmpTargetRef.current.lerpVectors(
         fromTargetRef.current,
         finalTargetRef.current,
         t * 0.5
       );
       camera.lookAt(tmpTargetRef.current);
-
       if (controlsRef.current) {
         controlsRef.current.target.copy(tmpTargetRef.current);
         controlsRef.current.update();
@@ -114,14 +298,12 @@ const CameraRig = ({ selectedStar, controlsRef }) => {
       const t = Math.min(1, timerRef.current / inDuration);
 
       camera.position.lerpVectors(midPosRef.current, finalPosRef.current, t);
-
       tmpTargetRef.current.lerpVectors(
         fromTargetRef.current,
         finalTargetRef.current,
         t
       );
       camera.lookAt(tmpTargetRef.current);
-
       if (controlsRef.current) {
         controlsRef.current.target.copy(tmpTargetRef.current);
         controlsRef.current.update();
@@ -133,21 +315,14 @@ const CameraRig = ({ selectedStar, controlsRef }) => {
       return;
     }
 
-    // idle – nema odabrane zvijezde, lagano vraćaj kameru na default
-    if (!selectedStar) {
-      const step = 1 - Math.exp(-delta * 3);
-      camera.position.lerp(defaultPos.current, step);
-      camera.lookAt(defaultTarget.current);
-
-      if (controlsRef.current) {
-        controlsRef.current.target.lerp(defaultTarget.current, step);
-        controlsRef.current.update();
-      }
-    }
+    // idle: ako nema selectedStar → ne diramo kameru, full free roam
+    if (!selectedStar) return;
   });
 
   return null;
 };
+
+/* 🔭 GLAVNI APP ---------------------------------------------------- */
 
 const App = () => {
   const { user } = useAuth();
@@ -166,7 +341,6 @@ const App = () => {
   const [searchId, setSearchId] = useState("");
   const [searchError, setSearchError] = useState("");
 
-  // global search po message / owner_name
   const [textQuery, setTextQuery] = useState("");
   const [textSearchError, setTextSearchError] = useState("");
 
@@ -174,7 +348,6 @@ const App = () => {
 
   const controlsRef = useRef(null);
 
-  // test Supabase konekcije
   useEffect(() => {
     const testSupabase = async () => {
       const { count, error } = await supabase
@@ -200,26 +373,21 @@ const App = () => {
   const handleStarClick = (star) => {
     console.log("Clicked star:", star);
 
-    // claimed → samo warp & zoom
     if (star.is_claimed) {
       setSelectedStar(star);
       setIsClaimModalOpen(false);
       return;
     }
 
-    // free → warp + claim modal
     setSelectedStar(star);
     setIsClaimModalOpen(true);
   };
 
-  // klik na karticu u "My Stars"
   const handleJumpToStar = (star) => {
     setSelectedStar(star);
     setIsClaimModalOpen(false);
     const el = document.getElementById("universe");
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   const handleCloseClaimModal = () => {
@@ -244,7 +412,9 @@ const App = () => {
     e.preventDefault();
 
     if (!selectedStar) {
-      alert("First click on a free star in the universe to choose which one you want to claim.");
+      alert(
+        "First click on a free star in the universe to choose which one you want to claim."
+      );
       return;
     }
 
@@ -272,7 +442,9 @@ const App = () => {
 
     if (error) {
       console.error("Error claiming star:", error);
-      alert("Something went wrong while claiming this star. Check the console for details.");
+      alert(
+        "Something went wrong while claiming this star. Check the console for details."
+      );
       return;
     }
 
@@ -282,7 +454,6 @@ const App = () => {
     handleCloseClaimModal();
   };
 
-  // search po ID-u
   const handleSearchSubmit = async (e) => {
     e.preventDefault();
     setSearchError("");
@@ -318,12 +489,9 @@ const App = () => {
     setSearchError("");
 
     const el = document.getElementById("universe");
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
-  // global search po ime / poruka
   const handleTextSearchSubmit = async (e) => {
     e.preventDefault();
     setTextSearchError("");
@@ -355,9 +523,7 @@ const App = () => {
     setTextSearchError("");
 
     const el = document.getElementById("universe");
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   const handleLogout = async () => {
@@ -373,7 +539,9 @@ const App = () => {
             <span className="grid h-8 w-8 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-xl">
               ⭐
             </span>
-            <span className="text-lg font-semibold tracking-tight">StarBazaar</span>
+            <span className="text-lg font-semibold tracking-tight">
+              StarBazaar
+            </span>
           </div>
 
           <nav className="hidden gap-6 text-sm text-slate-300 md:flex">
@@ -425,6 +593,7 @@ const App = () => {
       <main className="mx-auto max-w-6xl px-4 pb-16 pt-8">
         {/* HERO */}
         <section className="flex flex-col items-center gap-10 py-8 md:flex-row md:py-16">
+          {/* LEFT */}
           <div className="flex-1 space-y-5">
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1 text-xs text-slate-300">
               <span className="text-base">✨</span>
@@ -460,37 +629,13 @@ const App = () => {
               </a>
             </div>
 
-            <p className="text-xs text-slate-400">0+ stars claimed – you're early.</p>
+            {/* Global progress bar (ukupno claimed) */}
+            <ClaimProgress />
           </div>
 
-          {/* HERO PREVIEW */}
+          {/* RIGHT – Today’s claims counter */}
           <div className="flex-1">
-            <div className="relative mx-auto h-64 max-w-md rounded-3xl border border-slate-700 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl">
-              <div className="mb-3 text-xs text-slate-400 flex justify-between">
-                <span>A small peek into our galaxy</span>
-                <span className="inline-flex items-center gap-1 bg-slate-900 px-2 py-1 text-xs rounded-full">
-                  <span className="h-2 w-2 rounded-full bg-green-400" />
-                  Live preview
-                </span>
-              </div>
-
-              <div className="relative h-[180px] rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 overflow-hidden">
-                {[...Array(80)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="absolute h-1 w-1 rounded-full bg-slate-100 opacity-70"
-                    style={{
-                      top: `${Math.random() * 100}%`,
-                      left: `${Math.random() * 100}%`,
-                    }}
-                  />
-                ))}
-              </div>
-
-              <p className="mt-3 text-xs text-slate-400">
-                Every dot can become someone's story.
-              </p>
-            </div>
+            <TodayClaimsCounter />
           </div>
         </section>
 
@@ -518,30 +663,39 @@ const App = () => {
             </div>
 
             <div className="relative h-80 rounded-2xl border border-slate-800 overflow-hidden bg-black">
-              <Canvas camera={{ position: [0, 0, 12], fov: 60 }}>
+              <Canvas camera={{ position: [0, 40, 90], fov: 60 }}>
                 <color attach="background" args={["#020617"]} />
                 <Stars
-                  radius={120}
-                  depth={60}
-                  count={6000}
+                  radius={200}
+                  depth={80}
+                  count={9000}
                   factor={4}
                   saturation={0}
                   fade
                   speed={0.4}
                 />
-                <ambientLight intensity={0.4} />
+
+                {/* Sunčev sustav + milijun zvijezda */}
+                <SolarSystem />
                 <StarField onStarClick={handleStarClick} reloadKey={reloadKey} />
+
                 <OrbitControls
                   ref={controlsRef}
-                  enablePan={false}
+                  enablePan={true} // free roam (mouse + touch)
                   enableDamping
                   dampingFactor={0.08}
+                  minDistance={10}
+                  maxDistance={220}
                 />
-                <CameraRig selectedStar={selectedStar} controlsRef={controlsRef} />
+                <CameraRig
+                  selectedStar={selectedStar}
+                  controlsRef={controlsRef}
+                />
               </Canvas>
 
               <div className="absolute top-3 left-3 text-[11px] bg-black/60 px-3 py-1 rounded-full">
-                Drag to rotate · Scroll to zoom · Click a star
+                Drag to rotate · Scroll / pinch to zoom · Right-click / two-finger
+                drag to pan · Tap a star to zoom
               </div>
             </div>
           </div>
@@ -551,6 +705,7 @@ const App = () => {
             <h2 className="text-lg font-semibold">Explore the galaxy</h2>
             <ul className="text-sm text-slate-300 space-y-2">
               <li>✦ Zoom and rotate the 3D starfield.</li>
+              <li>✦ Pan around to freely roam the universe.</li>
               <li>✦ Hover to read people&apos;s messages.</li>
               <li>✦ Click a free star to claim it.</li>
               <li>✦ Click a claimed star to zoom to it.</li>
@@ -693,7 +848,9 @@ const App = () => {
             <summary className="cursor-pointer text-white text-sm">
               What am I buying?
             </summary>
-            <p className="text-slate-300 text-sm mt-2">A digital star, not a real one.</p>
+            <p className="text-slate-300 text-sm mt-2">
+              A digital star, not a real one.
+            </p>
           </details>
 
           <details className="mt-4 p-4 border border-slate-800 rounded-lg bg-slate-950">
@@ -781,39 +938,43 @@ const App = () => {
       {/* FULLSCREEN UNIVERSE OVERLAY */}
       {isUniverseFullscreen && (
         <div className="fixed inset-0 z-40 bg-black">
-          {/* Canvas u pozadini */}
           <div className="absolute inset-0">
-            <Canvas camera={{ position: [0, 0, 14], fov: 60 }}>
+            <Canvas camera={{ position: [0, 40, 90], fov: 60 }}>
               <color attach="background" args={["#020617"]} />
               <Stars
-                radius={160}
-                depth={80}
-                count={8000}
+                radius={220}
+                depth={90}
+                count={10000}
                 factor={4}
                 saturation={0}
                 fade
                 speed={0.4}
               />
-              <ambientLight intensity={0.4} />
+
+              <SolarSystem />
               <StarField onStarClick={handleStarClick} reloadKey={reloadKey} />
               <OrbitControls
                 ref={controlsRef}
-                enablePan={false}
+                enablePan={true}
                 enableDamping
                 dampingFactor={0.08}
+                minDistance={10}
+                maxDistance={260}
               />
-              <CameraRig selectedStar={selectedStar} controlsRef={controlsRef} />
+              <CameraRig
+                selectedStar={selectedStar}
+                controlsRef={controlsRef}
+              />
             </Canvas>
           </div>
 
-          {/* Info tekst gore lijevo */}
           <div className="absolute top-3 left-4 z-50 flex items-center gap-2 text-[11px] text-slate-300 bg-black/60 px-3 py-1 rounded-full">
             <span>
-              Fullscreen universe · Drag to rotate · Scroll to zoom · Click a star
+              Fullscreen universe · Drag to rotate · Scroll / pinch to zoom ·
+              Right-click / two-finger drag to pan · Tap a star to zoom
             </span>
           </div>
 
-          {/* X gumb gore desno */}
           <button
             type="button"
             onClick={() => setIsUniverseFullscreen(false)}
