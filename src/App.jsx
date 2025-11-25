@@ -10,22 +10,7 @@ import AuthModal from "./components/AuthModal.jsx";
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./lib/auth.jsx";
 import ClaimProgress from "./components/ClaimProgress.jsx";
-
-const recentStars = [
-  {
-    id: 1,
-    name: "Marko K.",
-    message: "For my mom, my real hero",
-    time: "2 min ago",
-  },
-  { id: 2, name: "Ana S.", message: "For us two, always", time: "5 min ago" },
-  {
-    id: 3,
-    name: "Galactic Anonymous",
-    message: "I did it, mom!",
-    time: "10 min ago",
-  },
-];
+import TopMessagesToday from "./components/TopMessagesToday.jsx";
 
 const SCALE = 0.6;
 
@@ -111,6 +96,15 @@ function Planet({
   const orbitRef = useRef();
   const planetRef = useRef();
 
+  // 🔹 random početni kut za svaki planet
+  const initialAngle = useRef(Math.random() * Math.PI * 2);
+
+  useEffect(() => {
+    if (orbitRef.current) {
+      orbitRef.current.rotation.y = initialAngle.current;
+    }
+  }, []);
+
   useFrame((_, delta) => {
     if (orbitRef.current) {
       orbitRef.current.rotation.y += orbitSpeed * delta;
@@ -161,7 +155,6 @@ function Planet({
     </group>
   );
 }
-
 const SolarSystem = () => {
   const planetTextures = useTexture({
     Mercury: "/textures/mercury.jpg",
@@ -241,15 +234,19 @@ const CameraRig = ({ selectedStar, controlsRef }) => {
     if (lastStarIdRef.current === selectedStar.id) return;
     lastStarIdRef.current = selectedStar.id;
 
-    const starPos = new THREE.Vector3(
-      selectedStar.x * SCALE,
-      selectedStar.y * SCALE,
-      selectedStar.z * SCALE
-    );
-    const dir = starPos.clone().normalize();
+  const starPos = new THREE.Vector3(
+  selectedStar.x * SCALE,
+  selectedStar.y * SCALE,
+  selectedStar.z * SCALE
+);
+const dir = starPos.clone().normalize();
 
-    finalTargetRef.current.copy(starPos);
-    finalPosRef.current.copy(starPos).add(dir.clone().multiplyScalar(4));
+// ciljat točno u zvijezdu
+finalTargetRef.current.copy(starPos);
+
+// 🔥 BUDI PUNO BLIŽE – 0.8–1.2 jedinica od zvijezde
+const distanceFromStar = 1.0; // možeš kasnije smanjit na 0.7 ako želiš još bliže
+finalPosRef.current.copy(starPos).add(dir.clone().multiplyScalar(distanceFromStar));
 
     fromPosRef.current.copy(camera.position);
     if (controlsRef.current) {
@@ -351,12 +348,11 @@ const App = () => {
 
   const [isUniverseFullscreen, setIsUniverseFullscreen] = useState(false);
 
-  // claim success state
   const [claimStep, setClaimStep] = useState("form"); // "form" | "success"
   const [recentlyClaimedStar, setRecentlyClaimedStar] = useState(null);
   const [shareCopied, setShareCopied] = useState(false);
 
-  const [allStars, setAllStars] = useState([]); // sve učitane zvijezde iz StarFielda
+  const [allStars, setAllStars] = useState([]); // sve učitane zvijezde
 
   const controlsRef = useRef(null);
 
@@ -704,12 +700,12 @@ const App = () => {
             </div>
           </div>
 
-          {/* RIGHT – Universe progress + vizualni progress bar */}
+          {/* RIGHT – Universe progress */}
           <div className="flex-1">
             <div className="p-4 rounded-2xl border border-slate-800 bg-slate-950 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-medium text-slate-300">
-                  Universe progress
+                  
                 </h3>
                 <span className="text-[11px] text-slate-400">
                   Goal: 1,000,000 stars sold
@@ -776,14 +772,15 @@ const App = () => {
                   reloadKey={reloadKey}
                 />
 
-                <OrbitControls
-                  ref={controlsRef}
-                  enablePan={true}
-                  enableDamping
-                  dampingFactor={0.08}
-                  minDistance={10}
-                  maxDistance={220}
-                />
+            <OrbitControls
+  ref={controlsRef}
+  enablePan
+  enableDamping
+  enableZoom
+  dampingFactor={0.08}
+  minDistance={0.3}   // 🔥 puno bliže
+  maxDistance={220}
+/>
                 <CameraRig
                   selectedStar={selectedStar}
                   controlsRef={controlsRef}
@@ -941,22 +938,10 @@ const App = () => {
           </div>
         </section>
 
-        {/* LIVE FEED */}
+        {/* TOP MESSAGES TODAY */}
         <section className="mt-16">
-          <h2 className="text-2xl font-semibold">Latest stars</h2>
-
-          <div className="grid md:grid-cols-3 gap-4 mt-6">
-            {recentStars.map((s) => (
-              <div
-                key={s.id}
-                className="p-4 border border-slate-800 rounded-2xl bg-slate-950"
-              >
-                <h3 className="text-sm font-medium">{s.name}</h3>
-                <p className="text-slate-300 text-sm mt-1">“{s.message}”</p>
-                <p className="text-xs text-slate-400 mt-2">{s.time}</p>
-              </div>
-            ))}
-          </div>
+          <h2 className="text-2xl font-semibold">Top messages today</h2>
+          <TopMessagesToday />
         </section>
 
         {/* PRICING */}
@@ -1191,14 +1176,16 @@ const App = () => {
                 onStarsLoaded={handleStarsLoaded}
                 reloadKey={reloadKey}
               />
-              <OrbitControls
-                ref={controlsRef}
-                enablePan={true}
-                enableDamping
-                dampingFactor={0.08}
-                minDistance={10}
-                maxDistance={260}
-              />
+              
+            <OrbitControls
+  ref={controlsRef}
+  enablePan
+  enableDamping
+  enableZoom
+  dampingFactor={0.08}
+  minDistance={0.3}
+  maxDistance={260}
+/>
               <CameraRig
                 selectedStar={selectedStar}
                 controlsRef={controlsRef}

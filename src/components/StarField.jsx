@@ -1,5 +1,5 @@
 // src/components/StarField.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useCursor } from "@react-three/drei";
 import * as THREE from "three";
@@ -9,7 +9,7 @@ const SCALE = 0.6;
 
 // ✨ Pulsirajući prsten oko claimed zvijezda
 const ClaimedRing = ({ position }) => {
-  const ref = React.useRef();
+  const ref = useRef();
 
   useFrame((state) => {
     if (!ref.current) return;
